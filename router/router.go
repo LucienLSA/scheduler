@@ -26,7 +26,20 @@ func Init(mode string) *gin.Engine {
 	rG := r.Group(sConf.ServerConfig.ContextPath)
 	{
 		rG.GET("/tasks", api.ListTask)
+		rG.GET("/task/:id", api.GetTask)
 		rG.POST("/task", api.AddTask)
+		rG.PUT("/task/:id", api.EditTask)
+		rG.DELETE("/task/:id", api.DeleteTask)
+
+		rG.GET("/tags", api.ListTag)
+		rG.GET("/specs", api.ListSpec)
+
+		rG.GET("/execute/:id", api.ExecuteTask)
+
+		rG.GET("/records", api.ListRecord)
+
+		rG.GET("/health", api.Health)
+		rG.GET("/shutdown", api.Shutdown)
 	}
 	// 加载静态文件和html
 	if sConf.ServerConfig.ConsoleEnable {

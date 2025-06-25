@@ -40,3 +40,43 @@ func (s *TaskSrv) ListTask(ctx context.Context, req *req.TaskQuery) ([]model.Tas
 	}
 	return list, total, nil
 }
+
+func (s *TaskSrv) ListStartedTaskBySpec(ctx context.Context, spec string) ([]model.Task, error) {
+	taskDao := mysql.NewTaskDao(ctx)
+	return taskDao.ListStartedTaskBySpec(spec)
+}
+
+func (s *TaskSrv) TryExecuteTask(ctx context.Context, task model.Task) (int64, error) {
+	taskDao := mysql.NewTaskDao(ctx)
+	return taskDao.TryExecuteTask(task)
+}
+
+func (s *TaskSrv) AddTask(ctx context.Context, task model.Task) (int64, error) {
+	taskDao := mysql.NewTaskDao(ctx)
+	metadataDao := mysql.NewMetadataDao(ctx)
+	err := metadataDao.ChangeTaskEditVersion()
+	if err != nil {
+		return 0, err
+	}
+	return taskDao.AddTask(task)
+}
+
+func (s *TaskSrv) GetTask(ctx context.Context, id int64) (model.Task, error) {
+	taskDao := mysql.NewTaskDao(ctx)
+	return taskDao.GetTask(id)
+}
+
+func (s *TaskSrv) EditTask(ctx context.Context, task model.Task) error {
+	taskDao := mysql.NewTaskDao(ctx)
+	metadataDao := mysql.NewMetadataDao(ctx)
+	err := metadataDao.ChangeTaskEditVersion()
+	if err != nil {
+		return err
+	}
+	return taskDao.EditTask(task)
+}
+
+func (s *TaskSrv) DeleteTask(ctx context.Context, id int64) error {
+	taskDao := mysql.NewTaskDao(ctx)
+	return taskDao.DeleteTask(id)
+}

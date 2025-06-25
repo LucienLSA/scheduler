@@ -1,26 +1,29 @@
 package job
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"smallscheduler/base"
-	"smallscheduler/model"
+	"scheduler/db/model"
+	"scheduler/service"
 	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
+	"go.uber.org/zap"
 )
 
 var Shutdown = false
 
 // 调度任务
-func scheduled(spec string) {
+func scheduled(ctx context.Context, spec string) {
 	//获取该cron下的所有任务
-	taskList, err := service.ListStartedTaskBySpec(spec)
+	l := service.GetTaskSrv()
+	taskList, err := l.ListStartedTaskBySpec(ctx, spec)
 	if err != nil {
-		base.Logger.Error(err.Error())
+		zap.L().Error("service.ListStartedTaskBySpec failed, err:%v\n", zap.Error(err))
 	}
 	//如果任务列表长度为0，则删除该工作者
 	if len(taskList) == 0 {
@@ -28,7 +31,7 @@ func scheduled(spec string) {
 		worker.(*cron.Cron).Stop()
 		workerFactory.Delete(spec)
 		worker = nil
-		base.Logger.Info("a invalid worker is deleted")
+		zap.L().Info("a invalid worker is deleted")
 	}
 	//循环请求
 	for _, task := range taskList {
@@ -39,28 +42,29 @@ func scheduled(spec string) {
 			if time.Now().UnixMilli() <= task.TimeLock {
 				return
 			}
-			yes, err := service.TryExecuteTask(task)
+			yes, err := l.TryExecuteTask(ctx, task)
 			if err != nil {
-				base.Logger.Error(err.Error())
+				zap.L().Error("service.TryExecuteTask failed, err:%v\n", zap.Error(err))
 				return
 			}
 			if yes == 0 {
 				return
 			}
 			// 使用主url发起请求
-			if Execute(task, task.Url, 0) {
+			if Execute(ctx, task, task.Url, 0) {
 				return
 			}
 			// 如果主url请求失败，且有备用url，使用备用url发起请求
 			if len(task.BackupUrl) > 0 {
-				Execute(task, task.BackupUrl, 1)
+				Execute(ctx, task, task.BackupUrl, 1)
 			}
 		}(task)
 	}
 }
 
 // Execute 执行任务
-func Execute(task model.Task, url string, isBackup int32) bool {
+func Execute(ctx context.Context, task model.Task, url string, isBackup int32) bool {
+	l := service.GetRecordSrv()
 	for i := 0; i <= int(task.RetryMax); i++ {
 		record := model.Record{
 			TaskId:     task.Id,
@@ -72,9 +76,9 @@ func Execute(task model.Task, url string, isBackup int32) bool {
 		record.Result = result
 		record.Code = int32(code)
 		record.TimeCost = int32(timeCost)
-		err := service.AddRecord(record)
+		err := l.AddRecord(ctx, record)
 		if err != nil {
-			base.Logger.Error(err.Error())
+			zap.L().Error("service.AddRecord failed, err:%v\n", zap.Error(err))
 		}
 		if record.Code >= 200 && record.Code < 300 {
 			return true
@@ -121,7 +125,7 @@ func httpSend(method, url, body, header string) (int, int64, string) {
 	defer func(body io.ReadCloser) {
 		err = body.Close()
 		if err != nil {
-			base.Logger.Error(err.Error())
+			zap.L().Error("body.Close failed, err:%v\n", zap.Error(err))
 		}
 	}(response.Body)
 	resultBytes, err := io.ReadAll(response.Body)
